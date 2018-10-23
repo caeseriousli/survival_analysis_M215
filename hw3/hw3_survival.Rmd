@@ -1,0 +1,84 @@
+---
+title: "Survival Analysis Homewok 3"
+author: "Caesar (Zexuan) Li"
+date: "10/22/2018"
+output:
+     html_document: 
+       smart: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy.opts=list(width.cutoff=200))
+library(survival) # loading survival functions into R
+library(KMsurv) 
+
+```
+
+## 4.2 Part (a)
+# AML Low Risk
+
+
+```{r}
+data(bmt)
+low = bmt[bmt$group == 2, ]
+high = bmt[bmt$group == 3, ]
+fit_low <- survfit(Surv(t1, d1) ~ 1, data = low, conf.type = "log-log")
+fit_high <- survfit(Surv(t1, d1) ~ 1, data = high, conf.type = "log-log")
+
+# put results inside this variable so we can produce a nice table later
+low_results = summary(fit_low)
+low_results = as.data.frame(low_results[2:10])
+
+high_results = summary(fit_high)
+high_results = as.data.frame(high_results[2:10])
+#names(surv_results) = 
+
+head(low_results, 10)
+```
+
+# AML High Risk
+
+```{r}
+head(high_results, 10)
+```
+
+## 4.2 Part (b)
+
+    Let's use Nelson-Aalen Estimate here
+  
+# AML Low Risk
+
+```{r}
+# each term of Nelson-Aelen estimator in vector form
+h.low = fit_low$n.event/fit_low$n.risk
+h.high = fit_high$n.event/fit_high$n.risk
+
+# cumulatively sum the vector to get a vector of Nelson-Aelen estimators at 
+# each time point
+H.low = cumsum(h.low)
+H.high = cumsum(h.high)
+
+s.low = fit_low$n.event/fit_low$n.risk^2
+s.high = fit_high$n.event/fit_high$n.risk^2
+
+V.low = cumsum(s.low)
+V.high = cumsum(s.high)
+
+NAest.low <- cbind(H.low, sqrt(V.low))
+colnames(NAest.low) <- c("NA-Est.","Std. Err")
+
+head(NAest.low, 10)
+```
+
+# AML High Risk
+
+```{R}
+NAest.high <- cbind(H.high, sqrt(V.high))
+colnames(NAest.high) <- c("NA-Est.","Std. Err")
+
+head(NAest.high, 10)
+```
+
+## Part (c) 
+
+Crude estimate would be to use the defined relation ship between h(x) and H(x), which is $$ h(x_i) = H(x_{i+1})-H(x_i) $$

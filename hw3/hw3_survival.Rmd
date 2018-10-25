@@ -3,19 +3,21 @@ title: "Survival Analysis Homewok 3"
 author: "Caesar (Zexuan) Li"
 date: "10/22/2018"
 output:
-     html_document: 
-       smart: false
+  pdf_document: default
+  html_document:
+    smart: no
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, tidy.opts=list(width.cutoff=200))
 library(survival) # loading survival functions into R
 library(KMsurv) 
-
+library(dplyr)
 ```
 
 ## 4.2 Part (a)
-# AML Low Risk
+### AML Low Risk
 
 
 ```{r}
@@ -33,20 +35,20 @@ high_results = summary(fit_high)
 high_results = as.data.frame(high_results[2:10])
 #names(surv_results) = 
 
-head(low_results, 10)
+low_results %>% select(-type)
 ```
 
-# AML High Risk
+### AML High Risk
 
 ```{r}
-head(high_results, 10)
+high_results %>% select(-type)
 ```
 
 ## 4.2 Part (b)
 
-    Let's use Nelson-Aalen Estimate here
+Let's use Nelson-Aalen Estimate here
   
-# AML Low Risk
+### AML Low Risk
 
 ```{r}
 # each term of Nelson-Aelen estimator in vector form
@@ -64,21 +66,491 @@ s.high = fit_high$n.event/fit_high$n.risk^2
 V.low = cumsum(s.low)
 V.high = cumsum(s.high)
 
-NAest.low <- cbind(H.low, sqrt(V.low))
-colnames(NAest.low) <- c("NA-Est.","Std. Err")
+NAest.low <- cbind(fit_low$time, 
+                   fit_low$n.risk, 
+                   fit_low$n.event, 
+                   H.low, sqrt(V.low))
+colnames(NAest.low) <- c("time", "n.risk", "n.event","NA-Est.","Std. Err")
 
-head(NAest.low, 10)
+# NAest.low[, 1] = round(NAest.low[, 1], 2)
+
+# Deleting duplicated (which is caused by censored data) points, leave only the
+# interval end points (just as the package automatically did for KME)
+NAest.low = NAest.low[!duplicated(NAest.low[, "NA-Est."]),]
+NAest.low
 ```
 
-# AML High Risk
+### AML High Risk
 
 ```{R}
-NAest.high <- cbind(H.high, sqrt(V.high))
-colnames(NAest.high) <- c("NA-Est.","Std. Err")
+NAest.high <- cbind(fit_high$time, 
+                   fit_high$n.risk, 
+                   fit_high$n.event, 
+                   H.high, sqrt(V.high))
+colnames(NAest.high) <- c("time", "n.risk", "n.event","NA-Est.","Std. Err")
 
-head(NAest.high, 10)
+NAest.high = NAest.high[!duplicated(NAest.high[, "NA-Est."]),]
+NAest.high
 ```
 
-## Part (c) 
+## Part (d) 
 
-Crude estimate would be to use the defined relation ship between h(x) and H(x), which is $$ h(x_i) = H(x_{i+1})-H(x_i) $$
+Crude estimate would be to use the defined relation ship between h(x) and H(x), which is $$ \hat{\mu} = \int_{0}^{\infty} \hat{S}(t) dt $$
+
+but since our last few observations are censored, the estimate would go to infinity. Therefore we use restricted mean. One way for this "Correction" is to evaluate restricted mean at the time of the last death observation, which in this case is t0 = 2204 (which can be found from the KME estimation table)
+
+```{R}
+# Set it to the time of the last uncensored observation
+t0 = 2204
+print(fit_low, print.rmean = TRUE, rmean = t0)
+```
+
+
+Similarly, for High Risk group, the last uncensored observation time is 1298 
+
+```{R}
+# Set it to the time of the last uncensored observation
+t0 = 1298
+print(fit_high, print.rmean = TRUE, rmean = t0)
+```
+
+
+## Part (e)
+
+here, as introduced in lab3 we can use Brookmeyer and Crowley (1982) method for the C.I. Sourcing the function from Eric's repository
+
+### AML Low Risk Group
+
+### Linear Method (All at 95% confidence level)
+```{R}
+source(paste0("https://github.com/erickawaguchi/bios215/raw/master/functions/", "bc_median_ci.R")) 
+bc.median.ci(fit_low, type = "linear", alpha = 0.05,  table = FALSE)
+```
+
+### Log-transformed Method
+```{R}
+bc.median.ci(fit_low, type = "log", alpha = 0.05,  table = FALSE)
+```
+
+### Arcsine-transformed Method
+```{R}
+bc.median.ci(fit_low, type = "asin", alpha = 0.05,  table = FALSE)
+```
+
+### AML High Risk Group
+### Linear Method
+```{R}
+bc.median.ci(fit_high, type = "linear", alpha = 0.05, table = FALSE)
+```
+
+### Log-transformed Method
+```{R}
+bc.median.ci(fit_high, type = "log", alpha = 0.05,  table = FALSE)
+```
+
+### Arcsine-transformed Method
+```{R}
+bc.median.ci(fit_high, type = "asin", alpha = 0.05,  table = FALSE)
+```
+
+## Part (f)  (Additional questions in the end)
+
+### AML Low Risk Group
+
+### Log Transform
+```{R}
+# the original fit object i created, conveniently was alsready configured for a 
+# log-log transformation
+log.low = as.data.frame(low_results[c(1:5, 8:9)])
+log.low[9:10, ]
+```
+
+I printed out the two end points before and after the time 300 days. Since it's a step function, the estimate for 300 days is the same as that of time "288 days". Therefore suvival function estimate at 300 days is 0.833 and the arcsine transformed confidence interval is (0.704, 0.910)
+
+### Arcsine Transform
+```{R}
+source(paste0("https://github.com/erickawaguchi/bios215/raw/master/functions/", "arcsin_ci.R")) 
+arcsine.low = arcsin.ci(fit_low, alpha = 0.05)
+arcsine.low[9:10, ]
+```
+
+Similarly, suvival function estimate at 300 days is 0.833 and the arcsine transformed confidence interval is (0.723, 0.920)
+
+### AML High Risk Group
+### Log Transform
+```{R}
+# Same proceedure as the low risk group
+log.high = as.data.frame(high_results[c(1:5, 8:9)])
+log.high[9:10, ]
+```
+
+### Arcsine Transform
+```{R}
+arcsine.high = arcsin.ci(fit_high, alpha = 0.05)
+arcsine.high[22:23, ]
+```
+Similarly, for the high risk group, suvival function estimate at 300 days is 0.489 and the arcsine transformed confidence interval is (0.345, 0.633)
+
+## Part (g)
+### AML High Risk Group
+
+### Linear 
+```{R}
+library(km.ci)
+ep.band.low =  km.ci(fit_low, tl = 100, tu = 400, method = 'epband')
+plot(fit_low$surv ~ fit_low$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (EP) confidence bands for Low Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.low$upper ~ ep.band.low$time, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.low$lower ~ ep.band.low$time, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### Log Transform 
+```{R}
+ep.band.low =  km.ci(fit_low, tl = 100, tu = 400, method = 'logep')
+plot(fit_low$surv ~ fit_low$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (logEP) confidence bands for Low Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.low$upper ~ ep.band.low$time, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.low$lower ~ ep.band.low$time, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### Arcsine Transform
+For Arcsine use Eric's Github repo function
+```{R}
+source(paste0("https://github.com/erickawaguchi/bios215/raw/master/functions/", "conf_bands.R"))
+region = cbands.region(fit_low, 100, 400)
+# The output is aL = 0.1  aU = 0.2
+# Using Appendix C, Critical Value = 2.56
+cat("Output Result: aL = 0.1 aU = 0.2 \n", "Critical Value (95%) = 2.56 \n")
+ep.band.low =  cbands.interval(fit_low, tL = 100, tU = 400, 
+                               crit.value = 2.56, type = "asin", method = 'ep')
+plot(fit_low$surv ~ fit_low$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (arcsineEP) confidence bands for Low Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.low$UL ~ ep.band.low$t, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.low$LL ~ ep.band.low$t, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### AML High Risk Group
+
+### Linear 
+```{R}
+ep.band.high =  km.ci(fit_high, tl = 100, tu = 400, method = 'epband')
+plot(fit_high$surv ~ fit_high$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (EP) confidence bands for High Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.high$upper ~ ep.band.high$time, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.high$lower ~ ep.band.high$time, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### Log Transform
+```{R}
+ep.band.high =  km.ci(fit_high, tl = 100, tu = 400, method = 'logep')
+plot(fit_high$surv ~ fit_high$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (logEP) confidence bands for High Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.high$upper ~ ep.band.high$time, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.high$lower ~ ep.band.high$time, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### Arcsine Transform
+```{R}
+region = cbands.region(fit_high, 100, 400)
+# The output is aL = 0.2  aU = 0.6
+# Using Appendix C, Critical Value = 2.77
+cat("Output Result: aL = 0.2 aU = 0.6 \n", "Critical Value (95%) = 2.77 \n")
+ep.band.high =  cbands.interval(fit_high, tL = 100, tU = 400, 
+                               crit.value = 2.77, type = "asin", method = 'ep')
+plot(fit_high$surv ~ fit_high$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (arcsineEP) confidence bands for High Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.high$UL ~ ep.band.high$t, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.high$LL ~ ep.band.high$t, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+
+
+## Part (h)
+Similar code to the last part
+### AML Low Risk Group
+
+### Linear
+```{R}
+ep.band.low =  km.ci(fit_low, tl = 100, tu = 400, method = 'hall-wellner')
+plot(fit_low$surv ~ fit_low$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (HW) confidence bands for Low Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.low$upper ~ ep.band.low$time, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.low$lower ~ ep.band.low$time, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### Log Transform
+```{R}
+hw.band.low =  km.ci(fit_low, tl = 100, tu = 400, method = 'loghall')
+plot(fit_low$surv ~ fit_low$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (logHW) confidence bands for Low Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(hw.band.low$upper ~ hw.band.low$time, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(hw.band.low$lower ~ hw.band.low$time, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "HW Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### Arcsine Transform
+```{R}
+region = cbands.region(fit_low, 100, 400)
+# The output is aL = 0.1  aU = 0.2
+# Using Appendix C, Critical Value = 2.56
+cat("Output Result: aL = 0.1 aU = 0.2 \n", "Critical Value (95%) = 2.56 \n")
+ep.band.low =  cbands.interval(fit_low, tL = 100, tU = 400, 
+                               crit.value = 2.56, type = "asin", method = 'hw')
+plot(fit_low$surv ~ fit_low$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (arcsineHW) confidence bands for Low Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.low$UL ~ ep.band.low$t, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.low$LL ~ ep.band.low$t, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+
+### AML High Risk Group
+
+### Linear 
+```{R}
+ep.band.high =  km.ci(fit_high, tl = 100, tu = 400, method = 'hall-wellner')
+plot(fit_high$surv ~ fit_high$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (HW) confidence bands for High Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.high$upper ~ ep.band.high$time, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.high$lower ~ ep.band.high$time, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### Log Transform
+```{R}
+hw.band.high =  km.ci(fit_high, tl = 100, tu = 400, method = 'loghall')
+plot(fit_high$surv ~ fit_high$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (logHW) confidence bands for High Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(hw.band.high$upper ~ hw.band.high$time, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(hw.band.high$lower ~ hw.band.high$time, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+### Arcsine Transform
+```{R}
+region = cbands.region(fit_high, 100, 400)
+# The output is aL = 0.2  aU = 0.6
+# Using Appendix C, Critical Value = 2.77
+cat("Output Result: aL = 0.2 aU = 0.6 \n", "Critical Value (95%) = 2.77 \n")
+ep.band.high =  cbands.interval(fit_high, tL = 100, tU = 400, 
+                               crit.value = 2.77, type = "asin", method = 'hw')
+plot(fit_high$surv ~ fit_high$time, type = 's',
+     xlim = c(100, 400), ylim = c(0, 1), col = "red",
+     main="KME with 95% (arcsineHW) confidence bands for High Risk Group", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+lines(ep.band.high$UL ~ ep.band.high$t, lty = 4, col = "blue", lwd = 1.5, type = 's') 
+lines(ep.band.high$LL ~ ep.band.high$t, lty = 4, col = "blue", lwd = 1.5, type = 's')
+
+legend("bottomleft", 
+       legend= c("K-M survival estimate", 
+                 "EP Bands"), 
+       lty=c(1, 2, 4,5), bty = "n", lwd = c(1, 1.5), 
+       cex = .7, col = c("red", "blue"))
+```
+
+## Part (i)
+From the KME plots and its confidence bands (different methods yielded similar results), we can see that patients in the AML low risk group experience mortality less and more slowly than the AML high risk group. The MKE curve in the high risk group has a much steeper slope that that of the low risk group, for day 100 to day 400. And the subjects in the All group is somewhere in between the two groups. From Figure 4.2, where it plotted estimated survival throughout the entire time line for all three groups, we can see that while the ALL group patients die at a moderate rate in between AML high and low risk groups. High risk group dies much faster than the two other groups.
+
+
+## Part (f) Additional
+
+### AML Low Risk Group
+### Likelihood Ratio Method
+```{R}
+source(paste0("https://github.com/erickawaguchi/bios215/raw/master/functions/", "LRci.R"))
+LRci.surv(fit_low, t = 300)
+```
+
+### Bootstrap
+
+Here I wrote my own function to do it, but I did borrowed parts from Eric's code on Github
+```{R}
+ci_bootstrap <- function(t1, c1, R = 100, alpha = 0.05, seed = 1991){
+  
+  #----- Inputs:
+  # t1    : Vector of observed survival times
+  # c1    : Vector of censoring indicators (0 = censored).
+  # t     : Time of interest
+  # R     : Number of iterations for bootstrapping. [Higher = More Time]
+  # seed  : Setting a seed for reproducibility. 
+  
+  surv300 = function(t1, c1) {
+    fit1 <- survfit(Surv(t1,c1) ~ 1, conf.type = 'none')
+    a = ecdf(fit1$time)
+    time300 = quantile(fit1$time, a(300), type = 3)
+    est = fit1$surv[match(time300, fit1$time)]
+    return(est)
+  }
+    
+  R = 1000
+  bootstrap.est <- numeric(R)
+    for(i in 1:R){
+      btsp1 <- sample(c(1:length(t1)), replace = TRUE)
+      t1.bootstrap <- t1[btsp1]
+      c1.bootstrap <- c1[btsp1]
+      bootstrap.est[i] <- surv300(t1.bootstrap, c1.bootstrap) 
+    }
+  
+  return(list("Quantile Estimate" = mean(bootstrap.est), "Std. Err" = sd(bootstrap.est),
+                "CI" = quantile(bootstrap.est, probs = c(alpha/2, 1-alpha/2))))
+  
+}
+
+ci_bootstrap(low$t1, low$d1)
+```
+
+
+### AML High Risk Group
+### Likelihood Ratio Method
+```{R}
+LRci.surv(fit_high, t = 300)
+```
+
+### Bootstrap
+```{R}
+ci_bootstrap(high$t1, high$d1)
+```
+
+## 4.7 Part (a)
+
+```{R}
+entryage = c(58,58,59,60,60,61,61,62,62,62,63,63,64,66,66,67,67,67,68,69,69,69,
+             70,70,70,71,72,72,73,73)
+age = c(60,63,69,62,65,72,69,73,66,65,68,74,71,68,69,70,77,69,72,79,72,70,76,
+        71,78,79,76,73,80,74)
+death = c(1,1,0,1,1,0,0,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1,0,1,0,0,1,1,0,1)
+
+diab = data.frame(entryage, age, death)
+
+diab.fit = survfit(Surv(entryage, age, death, type = 'counting') ~ 1, data = diab)
+
+res = data.frame(diab.fit$n.risk, diab.fit$time)
+names(res) = c("n.risk", "age")
+res
+```
+
+## Part (b)
+
+```{R}
+fit2 <- survfit(Surv(entryage, age, death, type='counting') ~ 1, 
+                data = diab, subset = (age > 60))
+summary(fit2)
+
+plot(fit2$surv ~ fit2$time, type = 's',
+     xlim = c(60, 80), ylim = c(0, 1), col = "red",
+     main="Estimated Survival Functions Conditioned on >60", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+
+```
+
+## Part (c)
+```{R}
+fit2 <- survfit(Surv(entryage, age, death, type='counting') ~ 1, 
+                data = diab, subset = (age > 70))
+summary(fit2)
+plot(fit2$surv ~ fit2$time, type = 's',
+     xlim = c(70, 80), ylim = c(0, 1), col = "red",
+     main="Estimated Survival Functions Conditioned on >70", 
+     xlab="Time (t)", ylab="Estimated Survival Function")
+```
+
+## Part (d)
+```{R}
+fit.new = survfit(Surv(age, death) ~ 1, data = diab, conf.type = "none")
+
+res = data.frame(fit.new$n.risk, fit.new$time)
+names(res) = c("n.risk", "age")
+res
+
+fit.new <- survfit(Surv(age, death) ~ 1, 
+                data = diab, subset = (age > 60))
+summary(fit.new)
+
+fit.new <- survfit(Surv(age, death) ~ 1, 
+                data = diab, subset = (age > 70))
+summary(fit.new)
+```

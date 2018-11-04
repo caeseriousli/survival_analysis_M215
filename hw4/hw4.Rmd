@@ -1,0 +1,86 @@
+---
+title: "Survivial Analysis hw4"
+author: "Caesar (Zexuan) Li"
+date: "10/28/2018"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem 7.2 
+
+### Equal weights
+
+```{r}
+library(survival)
+library(KMsurv)
+
+data(alloauto)
+
+t1 <- alloauto$time[alloauto$type == 2] 
+d1 <- alloauto$delta[alloauto$type == 2]
+
+nullsurv <- exp(-0.045 * t1) # expected survival under null
+
+fit = survdiff(Surv(t1, d1) ~ offset(nullsurv))
+
+fit
+```
+
+This is one-sided test statistic (Z value) and has a distribution of N(0,1). As calculated above its p-value is 0.093. Therefore if we use a significance level, 0.05 (or any reasonable alpha in this case), we would not reject null hypothesis (0.093 > 0.05). There is not sufficient evidence to reject that hazard rate of these auto transplant patients is 0.045.
+
+### Heavier weights for departures early in time
+
+Since Peto-Peto test gives heavier weights to early departures we use this one which is supported by the package
+```{r}
+survdiff(formula = Surv(t1, d1) ~ offset(nullsurv), rho = 1)
+```
+The p-value for the Peto-Peto test is 0.277. Again, if using a significance level of 0.05, we still would not reject null hypothesis, which statest that hazard rate of these auto transplant patients is 0.045.
+
+## Problem 7.3
+
+### Part (a)
+
+```{r}
+data(burn)
+
+survdiff(Surv(T3, D3) ~ Z1, data = burn, rho = 0) 
+```
+
+Two sampled log-rank test with weight = 1 gives a p-value = 0.05. Since we are using a 0.05 significance level, the null hypothesis is rejected. We do have evidence supporting that there is a difference in the rate of staphylococcus infection between patients whose burns were cared for with a routine bathing care method versus those whose body cleansing was performed.
+
+### Part (b)
+
+```{r}
+library(survMisc)
+fit <- ten(Surv(T3, D3) ~ Z1, data = burn) 
+comp(fit)
+```
+
+Using the package "survMisc", we have obtained results from different tests. Gehan's test is the second row, which has a test statistic of 0.069 and a p value of 0.092. If we are using a 0.05 significance level, 0.092 > 0.05 implies that there is no sufficient evidence to reject null hypothesis.
+
+### Part (c)
+
+test results from Tarone and Ware weights are in row number 3, which gives a test statistic of 0.696 and a p-value of 0.110. Again, with a 0.05 significance level, there is no sufficient evidence to reject null hypothesis.
+
+## Problem 7.4
+
+### Part (a)
+```{r}
+data("tongue")
+survdiff(formula = Surv(time, delta) ~ type, data = tongue, rho = 0) 
+```
+
+Using the log-rank test with "survdiff" function from the survival package, we get the chi-square test statistic equal to 2.8 and p-value = 0.09. At a significance level of 0.05, we would have not had sufficient evidence to reject the null hypothesis. We do not, at $\alpha=0.5$, reject that there is a difference in the survival rates of patients with cancer of the tongue are the same for patients with aneuploid and diploid tumors.
+
+### Part (b)
+```{r}
+fit <- ten(Surv(time, delta) ~ type, data = tongue) 
+comp(fit)
+```
+In this case we want to put more weight in the early time. We could use Tarone-Ware test, which is the thrid row of the results table. test statistic = 0.412, and p-value = 0.079. Again, if using a 0.05 significance level, we would not reject null hypothesis. 

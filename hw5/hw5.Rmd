@@ -1,0 +1,115 @@
+---
+title: "Survival Analysis Homework 5"
+author: "Caesar (Zexuan) Li"
+date: "11/4/2018"
+output: html_document
+---
+
+```{r, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=200), warning=FALSE)
+library(survival) # loading survival functions into R
+library(KMsurv) 
+library(dplyr)
+library(cmprsk)
+
+```
+
+
+## Problem 4.10 (a)
+
+```{r, message=FALSE}
+data(bmt)
+bmt.low = bmt[which(bmt$group == 2), ]
+bmt.high = bmt[which(bmt$group == 3), ]
+
+# Make the steps from the lab a function to avoid repeated code
+est.cif = function(x) {
+  x$ct_time <- pmin(x$t1, x$t2)
+  x$ct_status <- ifelse(x$d3 == 0, 0, 1)
+  x$ct_status <- ifelse(x$d2 == 1, x$ct_status * 1, 
+                              x$ct_status * 2)
+  
+  fit.ci <- cuminc(ftime = x$ct_time, fstatus = x$ct_status, cencode = 0)
+  fit.ci.relapse <- data.frame(do.call(cbind, fit.ci$'1 1')) #Time to relapse
+  fit.ci.death <- data.frame(do.call(cbind, fit.ci$'1 2')) #Time to death in remission
+  
+  # I believe the reason why obs were duplicated was because this cmprsk package keeps all original 
+  # observations, unlike how "survival" package would delete duplicates and only keep critical points
+  
+  fit.ci.relapse <- fit.ci.relapse %>% group_by(time) %>% slice(n()) %>% ungroup() 
+  fit.ci.death <- fit.ci.death %>% group_by(time) %>% slice(n()) %>% ungroup()
+  return(list(fit.ci.death, fit.ci.relapse))
+}
+```
+
+For reference I printed out first 15 estimates for reference, but estimate for cumulative incidence of death at one year is the 9th row (since it's a step function), which is >288 days and < 390 days
+
+```{r}
+fit.ci = est.cif(bmt.low)
+head(fit.ci[[1]], 15)
+```
+Therefore the answer is 0.167 for death cumulative incidence at one year
+
+```{r}
+head(fit.ci[[2]], 10)
+```
+
+For relapse, the estimated cumulative incidence is 0.074
+
+Now for High Risk Group, risk being death
+
+```{r}
+fit.ci3 = est.cif(bmt.high)
+head(fit.ci3[[1]], 15)
+```
+
+the estimate is 0.267
+
+For risk being relapse,
+```{r}
+head(fit.ci3[[2]], 20)
+```
+
+
+The estimate is 0.356
+
+
+## Problem 4.10 (b)
+
+Referring to the results produced in part (a), low risk group, death cumulative incidence at one year, $SE=\sqrt{0.00239}=0.049$    
+low risk, relapse cumulative incidence at one year $SE=\sqrt{0.0013}=0.036$    
+
+In high risk group, death cumulative incidence at one year, $SE=\sqrt{0.00451}=0.0672$    
+high risk group, relapse cumulative incidence at one year, $SE=\sqrt{0.00527}=0.0726$
+
+
+## Problem 8.1 (a)
+
+if NHL Allo is the reference hazard, then if the patient is in this group, code a variable Allo_Auto = 0 and NHL_HOD = 0. If a patient is in the NHL Auto group, then code Allo_Auto = 1 and NHL_HOD = 0. Similarly, a patient in HOD Allo group would have Allo_Auto = 0 and NHL_HOD = 1. A patient in in HOD Auto group would have Allo_Auto = 1 and NHL_HOD = 1.
+
+## Problem 8.1 (b)
+
+Have the same variables in (a) for main effects, namely, Allo_Auto and NHL_HOD. On top of the main effects, create an interaction variable, trans_disease, and give it values trans_disease = Allo_Auto x NHL_HOD (product of the two). Thus trans_disease would be equal to one only if a patient has both HOD and receives autologous transplant.
+
+## Problem 8.1 (c)
+
+If we name Allo_Auto Z1, NHL_HOD Z2 and interaction term Z3,    
+$h(t|HOD Allo) = h_0(t)exp(2)$ would, according to my dummy variables, have Z1=1, Z2=0, and Z3=0.    
+$h(t|NHL Auto) = h_0(t)exp(1.5)$ would have Z1=0, Z2=1, Z3=0.    
+$h(t|HOD Auto) = h_0(t)exp(.5)$ would have Z1=1, Z2=1, Z3=1.    
+And if the 3 coefficients are $\beta_1, \beta_2, \beta_3$, then we have 3 equations,    
+$1*\beta_1+0*\beta_2+0*\beta_3 =2$,     
+$0*\beta_1+1*\beta_2+0*\beta_3 =1.5$,    
+$1*\beta_1+1*\beta_2+1*\beta_3 =.5$.    
+Now solve the 3 equations we get $\beta_1 =2,  \beta_2=1.5, \beta_3 =-3$
+
+## Problem 8.2 (a)
+
+Code Z1 = 0 if the patient received the routine bathing care, and Z1 = 1 if the patient received the new bathing solution. No variable needed for the total area burned. Therefore we would have $h(t|z)=h_0(t)exp(\beta_1Z_1)$. Our test would be to test $H_0: \beta_1=0$
+
+## Problem 8.2 (b)
+
+Code Z1 = 0 if the patient received the routine bathing care, and Z1 = 1 if the patient received the new bathing solution. In addition, code Z2 = total surface area burned. And Z3 = Z1*Z2, which is an interaction term. The model, $$h(t|z)=h_0(t)exp(\beta_1Z_1+\beta_2Z_2+\beta_3Z_3)$$
+the test is, $\beta_1=\beta_3=0$
+
+

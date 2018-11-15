@@ -1,0 +1,536 @@
+---
+title: "Survival Homework 6"
+author: "Caesar (Zexuan) Li"
+date: "11/10/2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+library(survival)
+library(dplyr)
+library(KMsurv)
+data(hodg)
+```
+
+## Problem 8.5 Part (a)
+
+First fit the model, obtain coefficient estimates
+```{r}
+# Set up dummy variables for all four groups
+hodg$NHL_auto = ifelse(hodg$dtype == 1 & hodg$gtype == 2, 1, 0)
+hodg$HOD_allo = ifelse(hodg$dtype == 2 & hodg$gtype == 1, 1, 0)
+hodg$HOD_auto = ifelse(hodg$dtype == 2 & hodg$gtype == 2, 1, 0)
+
+fit = coxph(Surv(time, delta) ~ factor(NHL_auto) + 
+                                factor(HOD_allo) + 
+                                factor(HOD_auto), 
+            data = hodg, ties = "breslow")
+fit
+```
+
+
+To run the global test and then test one coefficient at a time we use General Wald Test:
+
+```{r}
+# Using Wald Test
+
+# Global Test by hand
+
+b.null <- c(0, 0, 0)
+X2.wald <- t(fit$coefficients - b.null) %*%
+  solve(fit$var) %*%
+  (fit$coefficients - b.null) 
+
+cat("Global Wald Test Statistic: ", X2.wald, "\n")
+cat("Global Wald Test p-value: ", 1 - pchisq(X2.wald, 3), "\n\n")
+
+# To reduce redundant code create a single coefficient Wald Test function, where fits 
+# is the fit object and index indicates which coefficient to test
+wald.single.coeff = function(fits, index, vec = NA) {
+  C <- rep(0, length(fits$coefficients))
+  if (!is.na(vec)) C <- vec
+  else C[index] <- 1
+  b0 <- rep(0, length(fits$coefficients))
+  b <- fits$coefficients
+  V <- fits$var
+  t(C %*% b - C %*% b0) %*% solve(t(C) %*% V %*% C) %*%
+  (C %*% b - C %*% b0)
+}
+
+TS1 = wald.single.coeff(fit, 1)
+TS2 = wald.single.coeff(fit, 2)
+TS3 = wald.single.coeff(fit, 3)
+
+pval1 = 1 - pchisq(TS1, 1)
+pval2 = 1 - pchisq(TS2, 1)
+pval3 = 1 - pchisq(TS3, 1)
+
+cat("NHL and Auto coeffient Wald Test Statistic: ", TS1, "\n")
+cat("NHL and Auto coeffient Wald Test p-value: ", pval1, "\n\n")
+cat("HOD and Allo coeffient Wald Test Statistic: ", TS2, "\n")
+cat("HOD and Allo coeffient Wald Test p-value: ", pval2, "\n\n")
+cat("HOD and Auto coeffient Wald Test Statistic: ", TS3, "\n")
+cat("HOD and Auto coeffient Wald Test p-value: ", pval3, "\n")
+```
+Global Test  
+
+|                 | Degrees of Freedom | Wald Chi-Square | p-Value     |        
+| --------------- |:------------------:|:---------------:|:-----------:|         
+| All 4 groups    | 3                  |   9.258         |  0.026      |     
+
+Conclusion: if we used significance level alpha=0.05, then we would have rejected the null, $H_0: \beta_1=\beta_2=\beta_3=0$. There is sufficient evidence that patients from the four "independent" groups have different hazard rates.    
+
+ANOVA Table summary for coefficient test results
+
+|                 | Degrees of Freedom | Coeff. Est. | Wald Chi-Square | p-Value     |        
+| --------------- |:------------------:|:-----------:|:---------------:|:-----------:|         
+| NHL and Auto    | 1                  | 0.664       |   1.384         |  0.239      |     
+| HOD and Allo    | 1                  | 1.830       |   7.341         |  0.007      |      
+| HOD and Auto    | 1                  | 0.154       |   0.068         |  0.794      |     
+
+
+If we use an alpha level at 0.05, then we may conclude that there is no sufficient evidence supporting that hazard rates are different either between HOD Auto and NHL Allo groups, or between NHL Auto and NHL Allo groups. However there is evidence that HOD Allo group patients have different hazard rates from those in the NHL Allo.   
+
+
+## Problem 8.5 Part (b)
+
+For main effects we have:
+```{r}
+hodg$auto = ifelse(hodg$gtype == 2, 1, 0)
+hodg$HOD = ifelse(hodg$dtype == 2, 1, 0)
+hodg$auto.HOD = hodg$auto * hodg$HOD
+
+fit.inter = coxph(Surv(time, delta) ~ 
+                    factor(auto) + 
+                    factor(HOD) + 
+                    factor(auto.HOD), 
+                  data = hodg, ties = "breslow")
+
+TS1 = wald.single.coeff(fit.inter, 1)
+TS2 = wald.single.coeff(fit.inter, 2)
+
+pval1 = 1 - pchisq(TS1, 1)
+pval2 = 1 - pchisq(TS2, 1)
+
+fit.inter
+cat("Auto coeffient Wald Test Statistic: ", TS1, "\n")
+cat("Auto coeffient Wald Test p-value: ", pval1, "\n\n")
+cat("HOD coeffient Wald Test Statistic: ", TS2, "\n")
+cat("Auto coeffient Wald Test p-value: ", pval2, "\n")
+
+```
+
+
+|                 | Auto     | HOD    |   
+| --------------- |:--------:| ------:|   
+| Test Statistic  | 1.384    | 7.341  |   
+| P-value         | 0.239    | 0.007  |   
+
+If using an alpha level at 0.05, there is no sufficient evidence supporting that patients who had autologous transplant has different hazard rates than those of the patients that received allogenic transplant. However, since 0.007<<0.05, we do have evidence that, at alpha=0.05, Non Hodgkin Lymphoma patients have different hazard ratio than that of Hodgkins disease patients.
+
+Now Test the interaction term with Likelihood Ratio test and Wald test
+
+```{r}
+# Here under null the model would have only two main effect coefficients, so we 
+# fit this model and put it in object "fit.b"
+fit.b = coxph(Surv(time, delta) ~ 
+                    factor(auto) + 
+                    factor(HOD), 
+                  data = hodg, ties = "breslow")
+
+
+lrt.inter = 2*(fit.inter$loglik[2] - fit.b$loglik[2])
+pval1 = 1 - pchisq(lrt.inter, 1)
+
+# Wald Test: use the general Wald Test on the third coefficient (interaction)
+
+TS2 = wald.single.coeff(fit.inter, 3)
+pval2 = 1 - pchisq(TS2, 1)
+
+cat("Interaction coeffient LRT Statistic: ", lrt.inter, "\n")
+cat("Interaction coeffient LRT p-value: ", pval1, "\n\n")
+cat("Interaction coeffient Wald Test Statistic: ", TS2, "\n")
+cat("Interaction coeffient Wald Test p-value: ", pval2, "\n")
+```
+Interaction term coefficient Test results by two different test (LRT and Wald)
+
+|                 | LRT      | Wald   |   
+| --------------- |:--------:| ------:|   
+| Test Statistic  | 7.354    | 7.548  |   
+| P-value         | 0.007    | 0.006  |   
+
+The ANOVA table to summarize main effects is:
+
+|                 | Degrees of Freedom | Coeff. Est. | Wald Chi-Square | p-Value     |        
+| --------------- |:------------------:|:-----------:|:---------------:|:-----------:|         
+| Autologous (Z1) | 1                  | 0.664       |   1.384         |  0.239      |     
+| HOD (Z2)        | 1                  | 1.830       |   7.341         |  0.007      |  
+
+At alpha=0.05, we have suffienct evidence (agreed on by both Likelihood Ratio Test and Wald Test) that there is interatction effect from the two main effects (receiving Autologous and having Hodgkins disease).
+
+## Problem 8.5 Part (c)
+
+Using the model in (a), we are comparing group NHL Auto to the reference group, so the relative risk we are looking for is 
+$$ \frac{h(t|Z_1=1, Z_2=0, Z_3=0)}{h(t|Z_1=0, Z_2=0, Z_3=0)}=\frac{h_0(t)exp(\beta_1)}{h_0(t)exp(0)}=e^{\beta_1}$$
+To Find a 95% confidence interval, we directly transform the confidence interval of $\beta_1$, since the sample size is not big enough for Central Limit Theorem to apply.
+
+and $e^{\hat{\beta}_1} =$ `r exp(fit$coefficients[1])`    
+From part (a) we have SE(auto) = 0.564
+  
+Therefore a 95% C.I. for the relative risk is $x^{0.664\pm 1.96*0.564}=(0.643, 5.868)$ (Note that if you used the interaction model from part (b) the answer would be slightly different)
+
+## Problem 8.5 Part (d)
+
+Here, using the model in part (a), we intend to test $H_0:\beta_2=0$, 
+
+```{r}
+TS1 = wald.single.coeff(fit, 2)
+pval1 = 1 - pchisq(TS1, 1)
+
+cat("Wald Chi-square Test Statistic: ", TS1, "\n")
+cat("Wald Chi-square p-value: ", pval1, "\n")
+```
+
+Therefore the p-value is 0.007 for testing hazard ratios of HOD Allo patients against NHL Allo patients.  
+
+In addition, for Auto patients, $H_0:\beta_3-\beta_1=0$ because 
+$$\frac{h(t|Z_1=0, Z_2=0, Z_3=1)}{h(t|Z_1=1, Z_2=0, Z_3=0)}=\frac{h_0(t)exp(\beta_3)}{h_0(t)exp(\beta_1)}=e^{\beta_3-\beta_1}$$
+Now use General Wald Test (Note that with the function "wald.single.coeff" created earlier, I can either pass an index, testing if one coeff. is zero, or a contrast vector, "vec", for intended contrasts)
+```{r}
+TS1 = wald.single.coeff(fit, vec=c(1, 0, -1))
+pval1 = 1 - pchisq(TS1, 1)
+
+cat("Wald Chi-square Test Statistic: ", TS1, "\n")
+cat("Wald Chi-square p-value: ", pval1, "\n")
+```
+
+The p-value, as displayed above, is 0.313 for the test of hazard rates differences in NHL Auto group vs. HOD Auto group.
+
+
+## Problem 8.5 Part (e)
+
+The hypothesis here is $H_0: \beta_1=0$ and $\beta_2=\beta_3$. So we construct two contrasts:
+
+
+```{r}
+# conduct a two-degree-of-freedom Wald test
+C = rbind(c(1, 0, 0), c(0, -1, 1))
+b0 = c(0, 0, 0)
+b = fit$coefficients
+V = fit$var
+TS = t(C %*% b - C %*% b0) %*% solve(C %*% V %*% t(C)) %*% 
+  (C %*% b - C %*% b0)
+pval = 1 - pchisq(TS, 2)
+
+cat("Wald Chi-square Test Statistic: ", TS, "\n")
+cat("Wald Chi-square p-value: ", pval, "\n")
+```
+
+The test statistics is 8.496 with df=2, and the p-value is 0.014
+
+
+
+## Problem 8.10 Part (a)
+
+```{r}
+data(bmt)
+fit = coxph(Surv(ta, da) ~ factor(z10), 
+            data = bmt, ties = "breslow")
+fit
+```
+Similar to 8.5 (c), we have:
+$$ \frac{h(t|Z_1=1)}{h(t|Z_1=0)}=\frac{h_0(t)exp(\beta_1*1)}{h_0(t)exp(\beta_1*0)}=e^{\beta_1}$$
+Using the Delta Method,    
+$SE^2(e^{\hat{\beta}_1})=SE^2(\hat{\beta_1})*(e^{\hat{\beta}_1})^2=$ `r (0.466^2)*(exp(fit$coefficients[1]))^2`    
+and a 95% C.I. for the relative risk of the two groups (given MTX and not given MTX) is $exp(-0.299)\pm 1.96*\sqrt{0.119}=(0.065, 1.418)$
+
+
+## Problem 8.10 Part (b)
+
+Refit the model with two more dummy variables for the three categories
+```{r}
+fit.b = coxph(Surv(ta, da) ~ factor(z10) + factor(group), 
+            data = bmt, ties = "breslow")
+fit.b
+```
+
+Similar to part (a), adjusting for all other variables:
+$$ \frac{h(t|Z_1=1)}{h(t|Z_1=0)}=\frac{h_0(t)exp(\beta_1*1+...)}{h_0(t)exp(\beta_1*0+...)}=e^{\beta_1}$$
+$SE^2(e^{\hat{\beta}_1})=SE^2(\hat{\beta_1})*(e^{\hat{\beta}_1})^2=$ `r (0.475^2)*(exp(fit.b$coefficients[1]))^2`    
+and a 95% C.I. for the relative risk of the two groups (given MTX and not given MTX) is $exp(-0.354)\pm 1.96*\sqrt{0.111}=(0.049, 1.355)$
+
+## Problem 8.10 Part (c)
+
+First code dummy variables and test $H_0: \beta_4=\beta_5=0$, where $\beta_4$ and $\beta_5$ are coefficients for the two interaction terms for MTX-Group2(low risk) and MTX-Group3(high risk), respectively.
+
+```{r}
+bmt$gp2 = ifelse(bmt$group == 2, 1, 0)
+bmt$gp3 = ifelse(bmt$group == 3, 1, 0)
+bmt$z10_gp2 = bmt$z10 * bmt$gp2
+bmt$z10_gp3 = bmt$z10 * bmt$gp3
+
+fit.c = coxph(Surv(ta, da) ~ factor(z10) + factor(gp2) + 
+                             factor(gp3) + factor(z10_gp2) +
+                             factor(z10_gp3), 
+            data = bmt, ties = "breslow")
+
+
+# Using Wald test for beta4 = beta5 = 0
+b.null <- c(0, 0)
+X2.wald <- t(fit.c$coefficients[4:5] - b.null) %*%
+  solve(fit.c$var[4:5, 4:5]) %*%
+  (fit.c$coefficients[4:5] - b.null) 
+
+round(cbind(X2.wald, 1-pchisq(X2.wald, 3)), 4)
+```
+
+From the output we can see that the test statistic is 1.036 and p-value is 0.793. If we used a significance level at alpha=0.05, then the null hypothesis would not have been rejected. Conclusion, there is no sufficient evidence that there are interactions between using MTX and being in different disease groups.
+
+## Problem 8.10 Part (d)
+
+Similar to what the textbook did in Example 8.5, run a forward selection:
+
+```{r}
+# Set up interaction terms and dummy variables that the original data set doesn't already have
+bmt$low = ifelse(bmt$group == 2, 1, 0)
+bmt$high = ifelse(bmt$group == 3, 1, 0)
+bmt$sex.inter = bmt$z3*bmt$z4
+bmt$cmv.inter = bmt$z5*bmt$z6
+bmt$Z1 = bmt$z1 - 28
+bmt$Z2 = bmt$z2 - 28
+bmt$age.inter = bmt$Z1*bmt$Z2
+
+# Waiting time
+fit1 = coxph(Surv(ta, da) ~ factor(z10) + z7, 
+            data = bmt, ties = "breslow")
+# FAB class
+fit2 = coxph(Surv(ta, da) ~ factor(z10) + factor(z8), 
+            data = bmt, ties = "breslow")
+# Groups
+fit3 = coxph(Surv(ta, da) ~ factor(z10) + factor(low) +
+                            factor(high), 
+            data = bmt, ties = "breslow")
+#sex
+fit4 = coxph(Surv(ta, da) ~ factor(z10) + factor(z3) +
+                            factor(z4) + factor(sex.inter), 
+            data = bmt, ties = "breslow") 
+#CMV Status
+fit5 = coxph(Surv(ta, da) ~ factor(z10) + factor(z5) +
+                            factor(z6) + factor(cmv.inter), 
+            data = bmt, ties = "breslow")
+#Age
+fit6 = coxph(Surv(ta, da) ~ factor(z10) + Z1 +
+                            Z2 + age.inter, 
+            data = bmt, ties = "breslow")
+
+wald.local = function(fits) {
+  if (length(fits$coefficients)==2) {
+    X2.wald = wald.single.coeff(fits, 2)
+  } else { 
+    b.null <- rep(0, length(fits$coefficients)-1)
+    X2.wald <- t(fits$coefficients[-1] - b.null) %*% 
+      solve(fits$var[-1, -1]) %*% 
+      (fits$coefficients[-1] - b.null) 
+  }
+  return(round(X2.wald, 4))
+}
+
+walds = c(wald.local(fit1), wald.local(fit2), wald.local(fit3), 
+          wald.local(fit4), wald.local(fit5), wald.local(fit6))
+
+dfs = c(1, 1, 2, 3, 3, 3)
+pvals = mapply(function(x, df) 1-pchisq(x, df), x = walds, df=dfs)
+aic = c(extractAIC(fit1)[2], extractAIC(fit2)[2], extractAIC(fit3)[2],
+        extractAIC(fit4)[2], extractAIC(fit5)[2], extractAIC(fit6)[2])
+
+results = data.frame(df = dfs, T.S = walds, pvalue = pvals, AIC = aic)
+results
+```
+
+### Summary of Stepwise Selection, Step 1
+|                        | Degrees of Freedom | Wald Chi-Square | p-Value         |  AIC        |         
+| ---------------------- |:------------------:|:---------------:|:---------------:|:-----------:|         
+| Waiting Time (z10)     | 1                  | 0.164           | 0.686           |  252.24     |     
+| FAB (z8)               | 1                  | 0.090           | 0.764           |  252.30     |     
+| Groups (low high)      | 1                  | 0.494           | 0.494           |  252.88     |     
+| sex (z3 z4 sex.inter)  | 3                  | 0.601           | 0.896           |  255.80     |     
+| CMV (z5 z6 cmv.inter)  | 3                  | 3.491           | 0.322           |  252.72     |     
+| Age (Z1 Z2 age.inter)  | 3                  | 6.576           | 0.087           |  247.43     |    
+
+Note that if we used a significant level of alpha=0.05, none of the models would be significant enough for the next round of selections. However, among all the models, age (Z1 Z2 and age.inter) has the p-value closest to alpha=0.05, and with the lowest AIC value, 247.43.    
+
+
+
+
+
+
+
+
+
+## Problem 8.14 Part (a)
+
+This would be the same model used in 8.10 part (d), fit3, so I used it directly
+```{r}
+# use fit3
+b.haz = basehaz(fit3, centered = F)
+t = b.haz[, 2]
+S.est <- cbind(exp(-b.haz[, 1]), t)
+
+# By disease groups 
+b.est <- fit3$coefficients
+
+# With MTX, ALL group
+S11 <- S.est[, 1]^(exp(t(b.est) %*% c(1, 0, 0)))
+# With MTX, Low group
+S12 <- S.est[, 1]^(exp(t(b.est) %*% c(1, 1, 0)))
+# With MTX, High group
+S13 <- S.est[, 1]^(exp(t(b.est) %*% c(1, 0, 1)))
+# Without MTX, ALL group
+S21 <- S.est[, 1]^(exp(t(b.est) %*% c(0, 0, 0)))
+# Without MTX, Low group
+S22 <- S.est[, 1]^(exp(t(b.est) %*% c(0, 1, 0)))
+# Without MTX, High group
+S23 <- S.est[, 1]^(exp(t(b.est) %*% c(0, 0, 1)))
+
+plot(S11 ~ t, type = 's', xlim = c(0, 100), ylim = c(0, 1),
+  main = 'Est. Survival Functions For When MTX Used', 
+  ylab = 'Est. Survival Function', xlab = 'Time')
+lines(S12 ~ t, type = 's', lty = 2, col = 2) 
+lines(S13 ~ t, type = 's', lty = 3, col = 3) 
+legend('bottomleft',
+       c('ALL Group', 'Low Risk Group', 'High Risk Group'), 
+       col = 1:3, lty = 1:3, bty = 'n', cex = .85)
+
+plot(S21 ~ t, type = 's', xlim = c(0, 100), ylim = c(0, 1),
+  main = 'Est. Survival Functions For When MTX Not Used', 
+  ylab = 'Est. Survival Function', xlab = 'Time')
+lines(S22 ~ t, type = 's', lty = 2, col = 2) 
+lines(S23 ~ t, type = 's', lty = 3, col = 3) 
+legend('bottomleft',
+       c('ALL Group', 'Low Risk Group', 'High Risk Group'), 
+       col = 1:3, lty = 1:3, bty = 'n', cex = .85)
+```
+
+The estimates are plotted in the survival function graphs above. 
+
+## Problem 8.14 Part (b)
+
+```{r}
+fit.s1 <- survfit(fit3, newdata = data.frame(z10 = 1, low = 0, high = 1), 
+                  se.fit = TRUE, conf.int = .95, conf.type = 'log-log')
+
+fit.s2 <- survfit(fit3, newdata = data.frame(z10 = 0, low = 0, high = 1), 
+                  se.fit = TRUE, conf.int = .95, conf.type = 'log-log')
+
+summary(fit.s1)
+summary(fit.s2)
+```
+
+From the summary we can see that at t = 80 days the estimation is to be the second to the last row. For MTX group, estimated survival is 0.896 and lower 95% C.I. estimate is (0.720, 0.964).    
+For non MTX group, estimated survival is 0.856 and lower 95% C.I. estimate is (0.701, 0.934).
+
+## Problem 9.1
+
+Here create artificial time-dependent covariate Z2 = Z1*g(t)
+```{r}
+# split the data for counting process
+tongue$z1 = ifelse(tongue$type == 2, 1, 0)
+cut.points <- unique(tongue$time[tongue$delta == 1])
+
+tongue2 <- survSplit(data = tongue, cut = cut.points, end = "time", start = "time0", event = "delta") 
+head(tongue2)
+
+# Time dependant variable
+tongue2$z2 <- (tongue2$z1)*log(tongue2$time)
+
+fit.t <- coxph(Surv(time0, time, delta) ~ z1 + z2, data = tongue2, ties = 'breslow')
+
+fit.t
+
+wald.single.coeff(fit.t, 2)
+```
+
+As we can see, the fitted model (with just ploidy indicator and the artificial time-dependent variable) is not significant at alpha = 0.05 level. Also the Wald test of the time-dependent variable returns a test statistic of 0.525, which has a p-value of 0.469, and it's still far from significant at alpha = 0.05. Therefore there is no sufficient evidence to reject null $H_0: \beta_2=0$, and the proportional assumption is not violated.
+
+
+## Problem 9.3 Part (a)
+
+```{r}
+t = c(1, 63, 105, 129, 182, 216, 250, 262, 301)
+      
+      
+bcdeter$delta = ifelse(is.na(bcdeter$upper), 1, 0)
+
+fit.93 = coxph(Surv(time = lower, time2 = upper, event = delta, type = "interval") ~ factor(treat), data = bcdeter, ties = 'breslow')
+
+summary(fit.93)
+```
+
+
+## Problem 9.5 Part (a)
+
+Set the strata on diagnosis year. Dummy variable = 1 if it's prior to 1975, 0 otherwise
+```{r}
+data("larynx")
+larynx$diag = ifelse(larynx$diagyr >= 75, 1, 0)
+cut.points <- unique(larynx$time[larynx$delta == 1])
+
+larynx2 <- survSplit(data = larynx, cut = cut.points, end = "time", start = "time0", event = "delta")
+
+fit.95 <- coxph(Surv(time0, time, delta) ~ factor(stage) + age + strata(diag), 
+             data = larynx2, ties = 'breslow')
+
+summary(fit.95)
+
+fit.unst <- coxph(Surv(time0, time, delta) ~ factor(stage) + age, 
+             data = larynx2, ties = 'breslow')
+summary(fit.unst)
+```
+
+From the output we obtain the ANOVA table for stratified model:
+|                   | Coeff. Est. | Degrees of Freedom | Wald Chi-Square | p-Value         |         
+| ----------------- |:-----------:|:------------------:|:---------------:|:---------------:|         
+| Stage 2           | 0.112       | 1                  | 0.059           | 0.809           |      
+| Stage 3           | 0.620       | 1                  | 3.028           | 0.082           |     
+| Stage 4           | 1.697       | 1                  | 14.853          | 0.0001          |     
+| Age               | 0.017       | 1                  | 1.297           | 0.255           |     
+
+Unstratified Model
+|                   | Coeff. Est. | Degrees of Freedom | Wald Chi-Square | p-Value         |         
+| ----------------- |:-----------:|:------------------:|:---------------:|:---------------:|         
+| Stage 2           | 0.139       | 1                  | 0.090           | 0.764           |      
+| Stage 3           | 0.638       | 1                  | 3.215           | 0.073           |     
+| Stage 4           | 1.693       | 1                  | 16.080          | <0.00001        |     
+| Age               | 0.019       | 1                  | 1.758           | 0.185           |     
+
+Although the two models yield similar results, the stratified model gives less significant p-values. In unstratified model the parameter significance get exaggerated because of the violation of unequal proportions.
+
+## Problem 9.5 Part (b)
+
+```{r}
+larynx.diag0 <- larynx2[larynx2$diag == 0, ] 
+larynx.diag1 <- larynx2[larynx2$diag == 1, ]
+
+fit0 <- coxph(Surv(time0, time, delta) ~ factor(stage) + age, data = larynx.diag0, ties = 'breslow')
+fit1 <- coxph(Surv(time0, time, delta) ~ factor(stage) + age, data = larynx.diag1, ties = 'breslow')
+X2 <- -2*(fit.95$loglik[2] - (fit0$loglik[2] + fit1$loglik[2]))
+cat("Likelihood Ratio Test Statistic: ", X2, "\n")
+cat("Likelihood Ratio Test P-value: ", 1 - pchisq(X2, 4), "\n")
+```
+
+## Problem 9.5 Part (c)
+
+```{r}
+W <- (fit1$coefficients[1] - fit0$coefficients[1])^2 / (fit1$var[1,1] + fit0$var[1,1])
+cat("Wald Test Statistic: ", W, "\n")
+cat("Wald Test P-value: ", 1 - pchisq(W, 4), "\n")
+```
+
+
+
+
+
+
